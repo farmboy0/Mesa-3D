@@ -52,3 +52,7 @@ Makefile.in
 .install-gallium-links
 /src/git_sha1.h
 TAGS
+.autotools
+.cproject
+.project
+.settings
