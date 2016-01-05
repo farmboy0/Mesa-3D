@@ -1246,6 +1246,274 @@ validate_program(struct gl_context *ctx, GLuint program)
 }
 
 
+static GLchar **
+include_node_name_to_token(const GLint namelen, const GLchar *name)
+{
+   GLchar *str, tok;
+   GLchar **result, temp, saveptr;
+   GLsizei count = 0, len = namelen < 0 ? strlen(name) : namelen;
+
+   str = malloc(len);
+   if (!str)
+      return NULL;
+
+   strncpy(str, name[1], --len);
+   str[len] = '\0';
+
+   result = malloc(result, sizeof(tok) * (count + 1));
+   if (!result) {
+      free(str);
+      return NULL;
+   }
+
+   tok = strtok_r(str, "/", saveptr);
+   while (tok != NULL && result) {
+      result[count++] = tok;
+
+      temp = realloc(result, sizeof(tok) * (count + 1));
+      if (temp) {
+         result = temp;
+         tok = strtok_r(NULL, "/", saveptr);
+      } else {
+         free(result);
+         result = NULL;
+      }
+   }
+
+   if (result) {
+      result[count] = NULL;
+      return result;
+   }
+
+   free(str);
+   return NULL;
+}
+
+
+static void
+include_node_free_token(GLchar **token)
+{
+	free(*token);
+	free(token);
+}
+
+
+static struct gl_include_node *
+include_node_add_child(struct gl_shared_state *shared,
+                       struct gl_include_node *parent, const GLchar *childName)
+{
+   struct gl_include_node *node;
+   GLchar * name;
+   struct gl_include_node **temp;
+
+   node = CALLOC_STRUCT(gl_include_node);
+   if (!node)
+      return NULL;
+
+   name = strdup(childName);
+   if (!name) {
+      free(node);
+      return NULL;
+   }
+
+   node->Parent = parent;
+   node->Name = name;
+
+   mtx_lock(shared->IncludeMutex);
+
+   temp = realloc(parent->Children, sizeof(node) * (parent->ChildCount + 1));
+   if (temp) {
+      parent->Children = temp;
+      parent->Children[parent->ChildCount] = node;
+      parent->ChildCount++;
+   } else {
+      free(name);
+      free(node);
+      node = NULL;
+   }
+
+   mtx_unlock(shared->IncludeMutex);
+
+   return node;
+}
+
+
+static void
+include_node_delete_child(struct gl_include_node *child)
+{
+   GLsizei i, t;
+   struct gl_include_node *parent = child->Parent;
+
+   if (parent->ChildCount > 1) {
+      for (i = 0, t = 0; i < parent->ChildCount; i++) {
+         if (parent->Children[i] != child)
+            parent->Children[t++] = parent->Children[i];
+      }
+      parent->ChildCount--;
+      parent->Children[parent->ChildCount] = NULL;
+   } else {
+      free(parent->Children);
+      parent->Children = NULL;
+      parent->ChildCount = 0;
+   }
+
+   free(child->Name);
+   free(child);
+}
+
+
+static struct gl_include_node *
+include_node_next_node(struct gl_shared_state *shared,
+                       struct gl_include_node *current, const GLchar *tokenName)
+{
+   GLsizei i;
+   struct gl_include_node *result = NULL;
+
+   if (strcmp(".", tokenName) == 0 || strlen(tokenName) == 0)
+      return current;
+
+   if (strcmp("..", tokenName) == 0) {
+      if (current->Parent)
+         return current->Parent;
+      else
+         return current;
+   }
+
+   mtx_lock(shared->IncludeMutex);
+
+   for (i = 0; i < current->ChildCount && !result; i++)
+      if (strcmp(tokenName, current->Children[i]->Name) == 0)
+         result = current->Children[i];
+
+   mtx_unlock(shared->IncludeMutex);
+
+   return result;
+}
+
+
+static struct gl_include_node *
+include_node_find(struct gl_shared_state *shared, const GLint namelen, const GLchar *name)
+{
+   struct gl_include_node *result = shared->IncludeRoot;
+   GLchar **it, tokArray = include_node_name_to_token(namelen, name);
+
+   if (!tokArray)
+      return NULL;
+
+   it = tokArray;
+   while (*it && result) {
+      result = include_node_next_node(shared, result, *it);
+      it++;
+   }
+
+   include_node_free_token(tokArray);
+
+   return result;
+}
+
+
+static void
+include_node_remove_tree(struct gl_context *ctx, const GLint namelen, const GLchar *name)
+{
+   struct gl_include_node *current, next;
+   GLchar **it, tokArray = include_node_name_to_token(namelen, name);
+
+   if (!tokArray)
+      return;
+
+   it = tokArray;
+   current = next = ctx->Shared->IncludeRoot;
+   while (*it && next && current) {
+      next = include_node_next_node(ctx->Shared, current, *it);
+      if (next)
+         current = next;
+      it++;
+   }
+
+   mtx_lock(ctx->Shared->IncludeMutex);
+
+   if (current == next) {
+      if (current->IncludeString) {
+         free(current->IncludeString);
+         current->IncludeString = NULL;
+         current->StringLen = 0;
+      } else {
+         _mesa_error(ctx, GL_INVALID_OPERATION, "DeleteNamedStringARB");
+      }
+   }
+
+   while(current->ChildCount == 0 && current->Parent && current->IncludeString == NULL) {
+      next = current->Parent;
+      include_node_delete_child(current);
+      current = next;
+   }
+
+   mtx_unlock(ctx->Shared->IncludeMutex);
+
+   include_node_free_token(tokArray);
+}
+
+
+static struct gl_include_node *
+include_node_create_tree(struct gl_shared_state *shared, const GLint namelen, const GLchar *name)
+{
+   struct gl_include_node *node = shared->IncludeRoot, temp;
+   GLchar **it, tokArray = include_node_name_to_token(namelen, name);
+
+   if (!tokArray)
+      return NULL;
+
+   it = tokArray;
+   while (*it && node) {
+      temp = include_node_next_node(node, *it);
+      node = temp ? temp : include_node_add_child(node, *it);
+      it++;
+   }
+
+   include_node_free_token(tokArray);
+
+   if (!node)
+      include_node_remove_tree(shared, namelen, name);
+
+   return node;
+}
+
+
+static GLboolean
+include_node_validate_name(const GLint namelen, const GLchar *name)
+{
+   GLboolean lastCharSlash = true;
+   GLsizei i, len;
+
+   if (name == NULL)
+      return GL_FALSE;
+
+   len = namelen < 0 ? strlen(name) : namelen;
+   if (len == 0 || name[0] != '/')
+      return GL_FALSE;
+
+   for (i = 1; i < len; i++)
+      if (!include_node_validate_char(name[i], &lastCharSlash))
+         return GL_FALSE;
+
+   return GL_TRUE;
+}
+
+
+static GLboolean
+include_node_validate_char(const GLchar *c, GLboolean *lastCharSlash)
+{
+   GLboolean ret = GL_TRUE;
+   if (*lastCharSlash && *c == '/')
+      ret = GL_FALSE;
+
+   *lastCharSlash = (*c == '/');
+
+// TODO check allowed chars
+   return ret;
+}
+
+
 
 void GLAPIENTRY
 _mesa_AttachObjectARB(GLhandleARB program, GLhandleARB shader)
@@ -1343,6 +1611,12 @@ _mesa_DeleteObjectARB(GLhandleARB obj)
 extern void GLAPIENTRY
 _mesa_DeleteNamedStringARB(GLint namelen, const GLchar *name)
 {
+   GET_CURRENT_CONTEXT(ctx);
+   if (!include_node_validate_name(namelen, name)) {
+      _mesa_error(ctx, GL_INVALID_VALUE, "DeleteNamedStringARB");
+      return;
+   }
+   include_node_remove_tree(ctx, name, namelen);
 }
 
 
@@ -1423,6 +1697,32 @@ extern void GLAPIENTRY
 _mesa_GetNamedStringARB(GLint namelen, const GLchar *name, GLsizei bufSize,
                         GLint *stringlen, GLchar *string)
 {
+   struct gl_include_node *node;
+   GLint size;
+   GET_CURRENT_CONTEXT(ctx);
+   if (!include_node_validate_name(namelen, name)) {
+      _mesa_error(ctx, GL_INVALID_VALUE, "glGetNamedStringARB");
+      return;
+   }
+
+   node = include_node_find(ctx->Shared, namelen, name);
+   if (!node) {
+      _mesa_error(ctx, GL_INVALID_OPERATION, "glGetNamedStringARB");
+      return;
+   }
+
+   mtx_lock(ctx->Shared->IncludeMutex);
+
+   if (!node->IncludeString) {
+      _mesa_error(ctx, GL_INVALID_OPERATION, "glGetNamedStringARB");
+   } else if (bufSize > 0) {
+      size = MIN(bufSize, node->StringLen) - 1;
+      if (stringlen)
+         *stringlen = size;
+      if (size > 0)
+         memcpy(string, node->IncludeString, size);
+      string[size] = '\0';
+   }
 }
 
 
@@ -1430,6 +1730,31 @@ extern void GLAPIENTRY
 _mesa_GetNamedStringivARB(GLint namelen, const GLchar *name,
                           GLenum pname, GLint *params)
 {
+   struct gl_include_node *node;
+   GET_CURRENT_CONTEXT(ctx);
+   if (!include_node_validate_name(namelen, name)) {
+      _mesa_error(ctx, GL_INVALID_VALUE, "glGetNamedStringivARB");
+      return;
+   }
+
+   node = include_node_find(ctx->Shared, namelen, name);
+   if (!node) {
+      _mesa_error(ctx, GL_INVALID_OPERATION, "glGetNamedStringivARB");
+      return;
+   }
+
+   mtx_lock(ctx->Shared->IncludeMutex);
+
+   if (!node->IncludeString) {
+      _mesa_error(ctx, GL_INVALID_OPERATION, "glGetNamedStringivARB");
+   } else {
+      if (pname == GL_NAMED_STRING_LENGTH_ARB)
+         *params = node->StringLen;
+      else if (pname == GL_NAMED_STRING_TYPE_ARB)
+         *params = node->Type;
+   }
+
+   mtx_unlock(ctx->Shared->IncludeMutex);
 }
 
 
@@ -1524,7 +1849,19 @@ _mesa_GetHandleARB(GLenum pname)
 extern GLboolean GLAPIENTRY
 _mesa_IsNamedStringARB(int namelen, const char *name)
 {
-   return GL_FALSE;
+   struct gl_include_node *node;
+   GLboolean result = GL_FALSE;
+   GET_CURRENT_CONTEXT(ctx);
+   if (include_node_validate_name(namelen, name)) {
+      node = include_node_find(ctx->Shared, namelen, name);
+      if (node) {
+         mtx_lock(ctx->Shared->IncludeMutex);
+         if (node->IncludeString)
+            result = GL_TRUE;
+         mtx_unlock(ctx->Shared->IncludeMutex);
+      }
+   }
+   return result;
 }
 
 
@@ -1558,6 +1895,34 @@ extern void GLAPIENTRY
 _mesa_NamedStringARB(GLenum type, GLint namelen, const GLchar *name,
                      GLint stringlen, const GLchar *string)
 {
+   GLchar *copy;
+   struct gl_include_node *node;
+   GET_CURRENT_CONTEXT(ctx);
+   if (type != GL_SHADER_INCLUDE_ARB || string == NULL || !include_node_validate_name(namelen, name)) {
+      _mesa_error(ctx, GL_INVALID_VALUE, "glNamedStringARB");
+      return;
+   }
+   node = include_node_create_tree(ctx->Shared, name, namelen);
+   if (!node)
+      return;
+
+   copy = malloc(stringlen + 1);
+   if (!copy) {
+      include_node_remove_tree(ctx, namelen, name);
+      return;
+   }
+   strncpy(copy, string, stringlen);
+   copy[stringlen] = '\0';
+
+   mtx_lock(ctx->Shared->IncludeMutex);
+
+   node->Type = type;
+   if (node->IncludeString)
+      free(node->IncludeString);
+   node->IncludeString = copy;
+   node->StringLen = stringlen + 1;
+
+   mtx_unlock(ctx->Shared->IncludeMutex);
 }
 
 #if defined(HAVE_SHA1)

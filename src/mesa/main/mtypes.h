@@ -2953,6 +2953,19 @@ struct gl_sync_object
 };
 
 
+/** A tree node that can contain shader includes */
+struct gl_include_node
+{
+   struct gl_include_node *Parent;      /**< The parent tree node or NULL for the root node */
+   GLchar *Name;                        /**< The name of this tree node */
+   GLenum Type;                         /**< Type of this string, currently only SHADER_INCLUDE_ARB */
+   GLint StringLen;                     /**< The length of the named string including null terminator*/
+   GLchar *IncludeString;               /**< The named string associated with this tree node */
+   GLuint ChildCount;                   /**< Current count of children attached to this tree node */
+   struct gl_include_node **Children;   /**< Children nodes dynamic array */
+};
+
+
 /**
  * State which can be shared by multiple contexts:
  */
@@ -3021,6 +3034,9 @@ struct gl_shared_state
     * Once this field becomes true, it is never reset to false.
     */
    bool ShareGroupReset;
+
+   struct gl_include_node *IncludeRoot;      /**< The root node for shader includes */
+   mtx_t IncludeMutex;                       /**< To lock access to the include tree */
 };
 
 
