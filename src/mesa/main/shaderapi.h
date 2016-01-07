@@ -60,6 +60,12 @@ _mesa_use_shader_program(struct gl_context *ctx,
                          struct gl_shader_program *shProg);
 
 extern void
+_mesa_include_node_init(void);
+
+extern void
+_mesa_include_node_free_all(void);
+
+extern void
 _mesa_active_program(struct gl_context *ctx, struct gl_shader_program *shProg,
 		     const char *caller);
 
