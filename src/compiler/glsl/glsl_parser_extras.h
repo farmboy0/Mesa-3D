@@ -951,7 +951,8 @@ typedef void (*glcpp_extension_iterator)(
 extern int glcpp_preprocess(void *ctx, const char **shader, char **info_log,
                             glcpp_extension_iterator extensions,
                             struct _mesa_glsl_parse_state *state,
-                            struct gl_context *gl_ctx);
+                            struct gl_context *gl_ctx,
+                            const struct gl_include_context *include_ctx);
 
 extern void _mesa_destroy_shader_compiler(void);
 extern void _mesa_destroy_shader_compiler_caches(void);

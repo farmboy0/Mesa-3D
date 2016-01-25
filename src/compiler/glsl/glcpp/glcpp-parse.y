@@ -1344,7 +1344,7 @@ add_builtin_define(glcpp_parser_t *parser, const char *name, int value)
 
 glcpp_parser_t *
 glcpp_parser_create(const struct gl_extensions *extension_list,
-                    glcpp_extension_iterator extensions, void *state, gl_api api)
+                    glcpp_extension_iterator extensions, const struct gl_include_context *include_ctx, void *state, gl_api api)
 {
    glcpp_parser_t *parser;
 
@@ -1391,6 +1391,9 @@ glcpp_parser_create(const struct gl_extensions *extension_list,
    parser->new_source_number = 0;
 
    parser->is_gles = false;
+
+   parser ->include_ctx = include_ctx;
+   parser->include_depth = 0;
 
    return parser;
 }

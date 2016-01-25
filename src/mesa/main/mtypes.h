@@ -3176,6 +3176,16 @@ struct gl_include_node
 };
 
 
+/** Data to resolve include strings with */
+struct gl_include_context
+{
+	struct gl_include_node *Root;       /**< The root node of the include tree */
+	size_t SearchPathCount;             /**< The number of elements in the path and length arrays */
+	const char *const *SearchPaths;     /**< Pointer to an array of search paths to resolve relative include paths against */
+	const int *SearchPathLengths;       /**< Array of lengths for each search path */
+};
+
+
 /**
  * State which can be shared by multiple contexts:
  */

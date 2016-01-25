@@ -225,11 +225,14 @@ struct glcpp_parser {
 	bool has_new_source_number;
 	int new_source_number;
 	bool is_gles;
+	const struct gl_include_context *include_ctx;
+	int include_depth;
+	void *buffers[10];
 };
 
 glcpp_parser_t *
 glcpp_parser_create(const struct gl_extensions *extension_list,
-                    glcpp_extension_iterator extensions, void *state, gl_api api);
+                    glcpp_extension_iterator extensions, const struct gl_include_context *include_ctx, void *state, gl_api api);
 
 int
 glcpp_parser_parse (glcpp_parser_t *parser);
@@ -243,7 +246,8 @@ glcpp_parser_resolve_implicit_version(glcpp_parser_t *parser);
 int
 glcpp_preprocess(void *ralloc_ctx, const char **shader, char **info_log,
 		 glcpp_extension_iterator extensions, void *state,
-		 struct gl_context *g_ctx);
+		 struct gl_context *g_ctx,
+		 const struct gl_include_context *include_ctx);
 
 /* Functions for writing to the info log */
 

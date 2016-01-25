@@ -224,11 +224,12 @@ remove_line_continuations(glcpp_parser_t *ctx, const char *shader)
 int
 glcpp_preprocess(void *ralloc_ctx, const char **shader, char **info_log,
                  glcpp_extension_iterator extensions, void *state,
-                 struct gl_context *gl_ctx)
+                 struct gl_context *gl_ctx,
+                 const struct gl_include_context *include_ctx)
 {
 	int errors;
 	glcpp_parser_t *parser =
-		glcpp_parser_create(&gl_ctx->Extensions, extensions, state, gl_ctx->API);
+		glcpp_parser_create(&gl_ctx->Extensions, extensions, include_ctx, state, gl_ctx->API);
 
 	if (! gl_ctx->Const.DisableGLSLLineContinuations)
 		*shader = remove_line_continuations(parser, *shader);

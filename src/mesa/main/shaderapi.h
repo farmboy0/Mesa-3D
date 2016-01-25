@@ -73,6 +73,10 @@ extern void
 _mesa_compile_shader(struct gl_context *ctx, struct gl_shader *sh);
 
 extern void
+_mesa_compile_shader_includes(struct gl_context *ctx, struct gl_shader *sh, GLsizei count,
+                     const GLchar *const *path, const GLint *length);
+
+extern void
 _mesa_link_program(struct gl_context *ctx, struct gl_shader_program *sh_prog);
 
 extern unsigned

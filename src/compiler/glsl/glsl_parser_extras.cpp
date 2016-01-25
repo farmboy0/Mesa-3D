@@ -1971,10 +1971,17 @@ do_late_parsing_checks(struct _mesa_glsl_parse_state *state)
    }
 }
 
+<<<<<<< Upstream, based on origin/master
 static void
 opt_shader_and_create_symbol_table(struct gl_context *ctx,
                                    struct glsl_symbol_table *source_symbols,
                                    struct gl_shader *shader)
+=======
+void
+_mesa_glsl_compile_shader(struct gl_context *ctx, struct gl_shader *shader,
+                          bool dump_ast, bool dump_hir, bool force_recompile,
+                          const struct gl_include_context *include_ctx)
+>>>>>>> 547a97f WIP compile with includes
 {
    assert(shader->CompileStatus != COMPILE_FAILURE &&
           !shader->ir->is_empty());
@@ -1982,6 +1989,7 @@ opt_shader_and_create_symbol_table(struct gl_context *ctx,
    struct gl_shader_compiler_options *options =
       &ctx->Const.ShaderCompilerOptions[shader->Stage];
 
+<<<<<<< Upstream, based on origin/master
    /* Do some optimization at compile time to reduce shader IR size
     * and reduce later work if the same shader is linked multiple times
     */
@@ -1994,6 +2002,26 @@ opt_shader_and_create_symbol_table(struct gl_context *ctx,
       while (do_common_optimization(shader->ir, false, false, options,
                                     ctx->Const.NativeIntegers))
          ;
+=======
+   state->error = glcpp_preprocess(state, &source, &state->info_log,
+                             add_builtin_defines, state, ctx, include_ctx);
+
+   if (!force_recompile) {
+      char buf[41];
+      _mesa_sha1_compute(source, strlen(source), shader->sha1);
+      if (ctx->Cache && disk_cache_has_key(ctx->Cache, shader->sha1)) {
+         /* We've seen this shader before and know it compiles */
+         if (ctx->_Shader->Flags & GLSL_CACHE_INFO) {
+            fprintf(stderr, "deferring compile of shader: %s\n",
+                    _mesa_sha1_format(buf, shader->sha1));
+         }
+         shader->CompileStatus = true;
+
+         free((void *)shader->FallbackSource);
+         shader->FallbackSource = NULL;
+         return;
+      }
+>>>>>>> 547a97f WIP compile with includes
    }
 
    validate_ir_tree(shader->ir);

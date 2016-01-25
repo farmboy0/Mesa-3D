@@ -1383,11 +1383,14 @@ set_shader_source(struct gl_shader *sh, const GLchar *source)
 
 
 /**
- * Compile a shader.
+ * Compile a shader with include search paths.
  */
 void
-_mesa_compile_shader(struct gl_context *ctx, struct gl_shader *sh)
+_mesa_compile_shader_includes(struct gl_context *ctx, struct gl_shader *sh, GLsizei count,
+                     const GLchar *const *path, const GLint *length)
 {
+   struct gl_include_context include_ctx;
+
    if (!sh)
       return;
 
@@ -1415,10 +1418,19 @@ _mesa_compile_shader(struct gl_context *ctx, struct gl_shader *sh)
          _mesa_log("%s\n", sh->Source);
       }
 
+      mtx_lock(&include_mutex);
+
+      include_ctx.Root = include_root;
+      include_ctx.SearchPathCount = count;
+      include_ctx.SearchPaths = path;
+      include_ctx.SearchPathLengths = length;
+
       /* this call will set the shader->CompileStatus field to indicate if
        * compilation was successful.
        */
-      _mesa_glsl_compile_shader(ctx, sh, false, false, false);
+      _mesa_glsl_compile_shader(ctx, sh, false, false, false, &include_ctx);
+
+      mtx_unlock(&include_mutex);
 
       if (ctx->_Shader->Flags & GLSL_LOG) {
          _mesa_write_shader_to_file(sh);
@@ -1457,6 +1469,16 @@ _mesa_compile_shader(struct gl_context *ctx, struct gl_shader *sh)
                      sh->Name, sh->InfoLog);
       }
    }
+}
+
+
+/**
+ * Compile a shader.
+ */
+void
+_mesa_compile_shader(struct gl_context *ctx, struct gl_shader *sh)
+{
+   _mesa_compile_shader_includes(ctx, sh, 0, NULL, NULL);
 }
 
 
